@@ -46,9 +46,10 @@ export interface ValidationResult {
  * validateChangeName('Add-Auth') // { valid: false, error: '...' }
  */
 export function validateChangeName(name: string): ValidationResult {
-  // Pattern: starts with lowercase letter, followed by lowercase letters/numbers,
-  // optionally followed by hyphen + lowercase letters/numbers (repeatable)
-  const kebabCasePattern = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
+  // Pattern: starts with lowercase letter or digit, followed by lowercase letters/numbers,
+  // optionally followed by hyphen + lowercase letters/numbers (repeatable).
+  // Numeric prefixes like "115-add-feature" are valid for tier-based ordering.
+  const kebabCasePattern = /^[a-z0-9][a-z0-9]*(-[a-z0-9]+)*$/;
 
   if (!name) {
     return { valid: false, error: 'Change name cannot be empty' };
@@ -77,11 +78,7 @@ export function validateChangeName(name: string): ValidationResult {
     if (/[^a-z0-9-]/.test(name)) {
       return { valid: false, error: 'Change name can only contain lowercase letters, numbers, and hyphens' };
     }
-    if (/^[0-9]/.test(name)) {
-      return { valid: false, error: 'Change name must start with a letter' };
-    }
-
-    return { valid: false, error: 'Change name must follow kebab-case convention (e.g., add-auth, refactor-db)' };
+    return { valid: false, error: 'Change name must follow kebab-case convention (e.g., add-auth, 101-refactor-db)' };
   }
 
   return { valid: true };
