@@ -356,6 +356,7 @@ describe('command-generation/adapters', () => {
       expect(output).toContain('argument-hint: command arguments');
       expect(output).toContain('---\n\n');
       expect(output).toContain('This is the command body.');
+      expect(output).toContain('$ARGUMENTS');
     });
   });
 

@@ -26,6 +26,8 @@ argument-hint: command arguments
 ---
 
 ${content.body}
+
+$ARGUMENTS
 `;
   },
 };
