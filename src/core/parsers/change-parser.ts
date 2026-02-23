@@ -144,6 +144,21 @@ export class ChangeParser extends MarkdownParser {
         });
       });
     }
+
+    // Parse INTEGRATION requirements
+    const integrationSection = this.findSection(sections, 'INTEGRATION Requirements');
+    if (integrationSection) {
+      const requirements = this.parseRequirements(integrationSection);
+      requirements.forEach(req => {
+        deltas.push({
+          spec: specName,
+          operation: 'INTEGRATION' as DeltaOperation,
+          description: `Integration requirement: ${req.text}`,
+          requirement: req,
+          requirements: [req],
+        });
+      });
+    }
     
     return deltas;
   }

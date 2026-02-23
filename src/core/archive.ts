@@ -222,7 +222,7 @@ export class ArchiveCommand {
 
         if (shouldUpdateSpecs) {
           // Prepare all updates first (validation pass, no writes)
-          const prepared: Array<{ update: SpecUpdate; rebuilt: string; counts: { added: number; modified: number; removed: number; renamed: number } }> = [];
+          const prepared: Array<{ update: SpecUpdate; rebuilt: string; counts: { added: number; modified: number; removed: number; renamed: number; integration: number } }> = [];
           try {
             for (const update of specUpdates) {
               const built = await buildUpdatedSpec(update, changeName!);
@@ -235,7 +235,7 @@ export class ArchiveCommand {
           }
 
           // All validations passed; pre-validate rebuilt full spec and then write files and display counts
-          let totals = { added: 0, modified: 0, removed: 0, renamed: 0 };
+          let totals = { added: 0, modified: 0, removed: 0, renamed: 0, integration: 0 };
           for (const p of prepared) {
             const specName = path.basename(path.dirname(p.update.target));
             if (!skipValidation) {
@@ -255,9 +255,11 @@ export class ArchiveCommand {
             totals.modified += p.counts.modified;
             totals.removed += p.counts.removed;
             totals.renamed += p.counts.renamed;
+            totals.integration += p.counts.integration;
           }
           console.log(
-            `Totals: + ${totals.added}, ~ ${totals.modified}, - ${totals.removed}, → ${totals.renamed}`
+            `Totals: + ${totals.added}, ~ ${totals.modified}, - ${totals.removed}, → ${totals.renamed}` +
+            (totals.integration > 0 ? `, ⊕ ${totals.integration}` : '')
           );
           console.log('Specs updated successfully.');
         }

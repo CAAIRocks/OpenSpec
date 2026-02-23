@@ -138,8 +138,9 @@ export class Validator {
         if (plan.sectionPresence.modified) sectionNames.push('## MODIFIED Requirements');
         if (plan.sectionPresence.removed) sectionNames.push('## REMOVED Requirements');
         if (plan.sectionPresence.renamed) sectionNames.push('## RENAMED Requirements');
+        if (plan.sectionPresence.integration) sectionNames.push('## INTEGRATION Requirements');
         const hasSections = sectionNames.length > 0;
-        const hasEntries = plan.added.length + plan.modified.length + plan.removed.length + plan.renamed.length > 0;
+        const hasEntries = plan.added.length + plan.modified.length + plan.removed.length + plan.renamed.length + plan.integration.length > 0;
         if (!hasEntries) {
           if (hasSections) emptySectionSpecs.push({ path: entryPath, sections: sectionNames });
           else missingHeaderSpecs.push(entryPath);
@@ -221,6 +222,28 @@ export class Validator {
           }
         }
 
+        // Validate INTEGRATION
+        const integrationNames = new Set<string>();
+        for (const block of plan.integration) {
+          const key = normalizeRequirementName(block.name);
+          totalDeltas++;
+          if (integrationNames.has(key)) {
+            issues.push({ level: 'ERROR', path: entryPath, message: `Duplicate requirement in INTEGRATION: "${block.name}"` });
+          } else {
+            integrationNames.add(key);
+          }
+          const requirementText = this.extractRequirementText(block.raw);
+          if (!requirementText) {
+            issues.push({ level: 'ERROR', path: entryPath, message: `INTEGRATION "${block.name}" is missing requirement text` });
+          } else if (!this.containsShallOrMust(requirementText)) {
+            issues.push({ level: 'ERROR', path: entryPath, message: `INTEGRATION "${block.name}" must contain SHALL or MUST` });
+          }
+          const scenarioCount = this.countScenarios(block.raw);
+          if (scenarioCount < 1) {
+            issues.push({ level: 'ERROR', path: entryPath, message: `INTEGRATION "${block.name}" must include at least one scenario` });
+          }
+        }
+
         // Cross-section conflicts (within the same spec file)
         for (const n of modifiedNames) {
           if (removedNames.has(n)) {
@@ -233,6 +256,17 @@ export class Validator {
         for (const n of addedNames) {
           if (removedNames.has(n)) {
             issues.push({ level: 'ERROR', path: entryPath, message: `Requirement present in both ADDED and REMOVED: "${n}"` });
+          }
+        }
+        for (const n of integrationNames) {
+          if (addedNames.has(n)) {
+            issues.push({ level: 'ERROR', path: entryPath, message: `Requirement present in both INTEGRATION and ADDED: "${n}"` });
+          }
+          if (modifiedNames.has(n)) {
+            issues.push({ level: 'ERROR', path: entryPath, message: `Requirement present in both INTEGRATION and MODIFIED: "${n}"` });
+          }
+          if (removedNames.has(n)) {
+            issues.push({ level: 'ERROR', path: entryPath, message: `Requirement present in both INTEGRATION and REMOVED: "${n}"` });
           }
         }
         for (const { from, to } of plan.renamed) {
@@ -332,7 +366,7 @@ export class Validator {
         });
       }
       
-      if ((delta.operation === 'ADDED' || delta.operation === 'MODIFIED') && 
+      if ((delta.operation === 'ADDED' || delta.operation === 'MODIFIED' || delta.operation === 'INTEGRATION') && 
           (!delta.requirements || delta.requirements.length === 0)) {
         issues.push({
           level: 'WARNING',

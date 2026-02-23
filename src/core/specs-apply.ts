@@ -32,6 +32,7 @@ export interface ApplyResult {
   modified: number;
   removed: number;
   renamed: number;
+  integration: number;
 }
 
 export interface SpecsApplyOutput {
@@ -42,6 +43,7 @@ export interface SpecsApplyOutput {
     modified: number;
     removed: number;
     renamed: number;
+    integration: number;
   };
   noChanges: boolean;
 }
@@ -101,7 +103,7 @@ export async function findSpecUpdates(changeDir: string, mainSpecsDir: string): 
 export async function buildUpdatedSpec(
   update: SpecUpdate,
   changeName: string
-): Promise<{ rebuilt: string; counts: { added: number; modified: number; removed: number; renamed: number } }> {
+): Promise<{ rebuilt: string; counts: { added: number; modified: number; removed: number; renamed: number; integration: number } }> {
   // Read change spec content (delta-format expected)
   const changeContent = await fs.readFile(update.source, 'utf-8');
 
@@ -159,6 +161,17 @@ export async function buildUpdatedSpec(
     renamedToSet.add(toNorm);
   }
 
+  const integrationNamesSet = new Set<string>();
+  for (const integ of plan.integration) {
+    const name = normalizeRequirementName(integ.name);
+    if (integrationNamesSet.has(name)) {
+      throw new Error(
+        `${specName} validation failed - duplicate requirement in INTEGRATION for header "### Requirement: ${integ.name}"`
+      );
+    }
+    integrationNamesSet.add(name);
+  }
+
   // Pre-validate cross-section conflicts
   const conflicts: Array<{ name: string; a: string; b: string }> = [];
   for (const n of modifiedNames) {
@@ -167,6 +180,11 @@ export async function buildUpdatedSpec(
   }
   for (const n of addedNames) {
     if (removedNamesSet.has(n)) conflicts.push({ name: n, a: 'ADDED', b: 'REMOVED' });
+  }
+  for (const n of integrationNamesSet) {
+    if (addedNames.has(n)) conflicts.push({ name: n, a: 'INTEGRATION', b: 'ADDED' });
+    if (modifiedNames.has(n)) conflicts.push({ name: n, a: 'INTEGRATION', b: 'MODIFIED' });
+    if (removedNamesSet.has(n)) conflicts.push({ name: n, a: 'INTEGRATION', b: 'REMOVED' });
   }
   // Renamed interplay: MODIFIED must reference the NEW header, not FROM
   for (const { from, to } of plan.renamed) {
@@ -190,11 +208,11 @@ export async function buildUpdatedSpec(
       `${specName} validation failed - requirement present in multiple sections (${c.a} and ${c.b}) for header "### Requirement: ${c.name}"`
     );
   }
-  const hasAnyDelta = plan.added.length + plan.modified.length + plan.removed.length + plan.renamed.length > 0;
+  const hasAnyDelta = plan.added.length + plan.modified.length + plan.removed.length + plan.renamed.length + plan.integration.length > 0;
   if (!hasAnyDelta) {
     throw new Error(
       `Delta parsing found no operations for ${path.basename(path.dirname(update.source))}. ` +
-        `Provide ADDED/MODIFIED/REMOVED/RENAMED sections in change spec.`
+        `Provide ADDED/MODIFIED/REMOVED/RENAMED/INTEGRATION sections in change spec.`
     );
   }
 
@@ -228,6 +246,15 @@ export async function buildUpdatedSpec(
   const nameToBlock = new Map<string, RequirementBlock>();
   for (const block of parts.bodyBlocks) {
     nameToBlock.set(normalizeRequirementName(block.name), block);
+  }
+
+  // INTEGRATION (treated like ADDED for archival)
+  for (const integ of plan.integration) {
+    const key = normalizeRequirementName(integ.name);
+    if (nameToBlock.has(key)) {
+      throw new Error(`${specName} INTEGRATION failed for header "### Requirement: ${integ.name}" - already exists`);
+    }
+    nameToBlock.set(key, integ);
   }
 
   // Apply operations in order: RENAMED → REMOVED → MODIFIED → ADDED
@@ -332,6 +359,7 @@ export async function buildUpdatedSpec(
       modified: plan.modified.length,
       removed: plan.removed.length,
       renamed: plan.renamed.length,
+      integration: plan.integration.length,
     },
   };
 }
@@ -342,7 +370,7 @@ export async function buildUpdatedSpec(
 export async function writeUpdatedSpec(
   update: SpecUpdate,
   rebuilt: string,
-  counts: { added: number; modified: number; removed: number; renamed: number }
+  counts: { added: number; modified: number; removed: number; renamed: number; integration: number }
 ): Promise<void> {
   // Create target directory if needed
   const targetDir = path.dirname(update.target);
@@ -355,6 +383,7 @@ export async function writeUpdatedSpec(
   if (counts.modified) console.log(`  ~ ${counts.modified} modified`);
   if (counts.removed) console.log(`  - ${counts.removed} removed`);
   if (counts.renamed) console.log(`  → ${counts.renamed} renamed`);
+  if (counts.integration) console.log(`  ⊕ ${counts.integration} integration`);
 }
 
 /**
@@ -402,7 +431,7 @@ export async function applySpecs(
     return {
       changeName,
       capabilities: [],
-      totals: { added: 0, modified: 0, removed: 0, renamed: 0 },
+      totals: { added: 0, modified: 0, removed: 0, renamed: 0, integration: 0 },
       noChanges: true,
     };
   }
@@ -411,7 +440,7 @@ export async function applySpecs(
   const prepared: Array<{
     update: SpecUpdate;
     rebuilt: string;
-    counts: { added: number; modified: number; removed: number; renamed: number };
+    counts: { added: number; modified: number; removed: number; renamed: number; integration: number };
   }> = [];
 
   for (const update of specUpdates) {
@@ -437,7 +466,7 @@ export async function applySpecs(
 
   // Build results
   const capabilities: ApplyResult[] = [];
-  const totals = { added: 0, modified: 0, removed: 0, renamed: 0 };
+  const totals = { added: 0, modified: 0, removed: 0, renamed: 0, integration: 0 };
 
   for (const p of prepared) {
     const capability = path.basename(path.dirname(p.update.target));
@@ -454,6 +483,7 @@ export async function applySpecs(
         if (p.counts.modified) console.log(`  ~ ${p.counts.modified} modified`);
         if (p.counts.removed) console.log(`  - ${p.counts.removed} removed`);
         if (p.counts.renamed) console.log(`  → ${p.counts.renamed} renamed`);
+        if (p.counts.integration) console.log(`  ⊕ ${p.counts.integration} integration`);
       }
     } else if (!options.silent) {
       console.log(`Would apply changes to openspec/specs/${capability}/spec.md:`);
@@ -461,6 +491,7 @@ export async function applySpecs(
       if (p.counts.modified) console.log(`  ~ ${p.counts.modified} modified`);
       if (p.counts.removed) console.log(`  - ${p.counts.removed} removed`);
       if (p.counts.renamed) console.log(`  → ${p.counts.renamed} renamed`);
+      if (p.counts.integration) console.log(`  ⊕ ${p.counts.integration} integration`);
     }
 
     capabilities.push({
@@ -472,6 +503,7 @@ export async function applySpecs(
     totals.modified += p.counts.modified;
     totals.removed += p.counts.removed;
     totals.renamed += p.counts.renamed;
+    totals.integration += p.counts.integration;
   }
 
   return {

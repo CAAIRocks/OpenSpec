@@ -101,11 +101,13 @@ export interface DeltaPlan {
   modified: RequirementBlock[];
   removed: string[]; // requirement names
   renamed: Array<{ from: string; to: string }>;
+  integration: RequirementBlock[];
   sectionPresence: {
     added: boolean;
     modified: boolean;
     removed: boolean;
     renamed: boolean;
+    integration: boolean;
   };
 }
 
@@ -123,20 +125,24 @@ export function parseDeltaSpec(content: string): DeltaPlan {
   const modifiedLookup = getSectionCaseInsensitive(sections, 'MODIFIED Requirements');
   const removedLookup = getSectionCaseInsensitive(sections, 'REMOVED Requirements');
   const renamedLookup = getSectionCaseInsensitive(sections, 'RENAMED Requirements');
+  const integrationLookup = getSectionCaseInsensitive(sections, 'INTEGRATION Requirements');
   const added = parseRequirementBlocksFromSection(addedLookup.body);
   const modified = parseRequirementBlocksFromSection(modifiedLookup.body);
   const removedNames = parseRemovedNames(removedLookup.body);
   const renamedPairs = parseRenamedPairs(renamedLookup.body);
+  const integrationBlocks = parseRequirementBlocksFromSection(integrationLookup.body);
   return {
     added,
     modified,
     removed: removedNames,
     renamed: renamedPairs,
+    integration: integrationBlocks,
     sectionPresence: {
       added: addedLookup.found,
       modified: modifiedLookup.found,
       removed: removedLookup.found,
       renamed: renamedLookup.found,
+      integration: integrationLookup.found,
     },
   };
 }
